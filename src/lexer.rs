@@ -1,4 +1,4 @@
-use crate::token::*;
+use crate::token::{Token, TokenType};
 
 use std::collections::HashMap;
 use std::iter::Iterator;
@@ -54,7 +54,7 @@ impl Lexer {
     }
 
     fn peek_next(&self) -> u8 {
-        if (self.read_position >= self.source_code.len()) {
+        if self.read_position >= self.source_code.len() {
             0
         } else {
             self.source_code[self.read_position]
