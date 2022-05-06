@@ -25,8 +25,10 @@ impl Iterator for Lexer {
 
 impl Lexer {
     pub fn new(input: &str) -> Self {
+        let mut code = Vec::from(input.as_bytes());
+        code.push(b'\0');
         Lexer {
-            source_code: Vec::from(input.as_bytes()),
+            source_code: code,
             current_position: 0,
             read_position: 1,
             current_char: input.as_bytes()[0],
@@ -44,7 +46,7 @@ impl Lexer {
 
     fn read_char(&mut self) {
         if self.read_position >= self.source_code.len() {
-            self.current_char = 0;
+            self.current_char = b'\0';
         } else {
             self.current_char = self.source_code[self.read_position];
         }

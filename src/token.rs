@@ -42,18 +42,20 @@ pub struct Token {
     pub literal: String,
 }
 
+impl Default for Token {
+    fn default() -> Self {
+        Token {
+            token_type: TokenType::Default,
+            literal: String::new(),
+        }
+    }
+}
+
 impl Token {
     pub fn new(token_type: TokenType, token_literal: &str) -> Self {
         Token {
             token_type,
             literal: token_literal.to_string(),
-        }
-    }
-
-    pub fn default() -> Self {
-        Token {
-            token_type: TokenType::Default,
-            literal: "Default Token".to_string(),
         }
     }
 }
