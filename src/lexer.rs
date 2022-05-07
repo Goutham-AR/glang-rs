@@ -1,6 +1,7 @@
 use crate::token::{Token, TokenType};
 
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::iter::Iterator;
 
 pub struct Lexer {

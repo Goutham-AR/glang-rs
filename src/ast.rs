@@ -1,7 +1,9 @@
 #[derive(PartialEq, Debug)]
 pub enum Statement {
     Default,
-    LetStatement(Identifier, Expression),
+    Def(Identifier, Expression),
+    Return(Expression),
+    Expression(Expression),
 }
 
 impl Default for Statement {
@@ -15,6 +17,22 @@ pub enum Expression {
     Default,
     Ident(Identifier),
     Literal(Literal),
+    Prefix(Operator, Box<Expression>),
+    Infix(Box<Expression>, Operator, Box<Expression>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Operator {
+    Default,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Bang,
+    EqualEqual,
+    BangEqual,
+    Greater,
+    Lesser,
 }
 
 #[derive(PartialEq, Debug)]
