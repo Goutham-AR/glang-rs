@@ -19,6 +19,7 @@ pub enum Expression {
     Literal(Literal),
     Prefix(Operator, Box<Expression>),
     Infix(Box<Expression>, Operator, Box<Expression>),
+    If(Box<Expression>, ProgramBlock, ProgramBlock),
 }
 
 #[derive(Debug, PartialEq)]
@@ -38,6 +39,7 @@ pub enum Operator {
 #[derive(PartialEq, Debug)]
 pub enum Literal {
     Int(i64),
+    Bool(bool),
 }
 
 impl Default for Expression {

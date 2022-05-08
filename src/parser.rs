@@ -83,6 +83,72 @@ impl Parser {
         Expression::Infix(Box::new(left), operator, right)
     }
 
+    fn parse_boolean(&mut self) -> Expression {
+        let value = self.curr_token.token_type == TokenType::True;
+        Expression::Literal(Literal::Bool(value))
+    }
+
+    fn parse_grouping(&mut self) -> Expression {
+        self.next_token();
+
+        let expr = self.parse_expression(Precedence::Lowest);
+
+        if !self.expect_peek(TokenType::RParen) {
+            panic!("Expected ')' after '('");
+        }
+
+        expr
+    }
+
+    fn parse_block_statement(&mut self) -> ProgramBlock {
+        self.next_token();
+
+        let mut stmts = vec![];
+
+        while !self.curr_token_is(TokenType::RBrace) && !self.curr_token_is(TokenType::Eof) {
+            let stmt = self.parse_statement();
+            if stmt != Statement::Default {
+                stmts.push(stmt);
+            }
+            self.next_token();
+        }
+
+        stmts
+    }
+
+    fn parse_if(&mut self) -> Expression {
+        if !self.expect_peek(TokenType::LParen) {
+            panic!("'(' not found for if expression");
+        }
+
+        self.next_token();
+        let condition = self.parse_expression(Precedence::Lowest);
+
+        if !self.expect_peek(TokenType::RParen) {
+            println!("{:?}", condition);
+            panic!("')' not found for if expression");
+        }
+
+        if !self.expect_peek(TokenType::LBrace) {
+            panic!("'{{' not found for if expression");
+        }
+
+        let consequence = self.parse_block_statement();
+
+        if self.peek_token_is(TokenType::Else) {
+            self.next_token();
+            if !self.expect_peek(TokenType::LBrace) {
+                panic!("Expected '{{' for else");
+            }
+
+            let alternative = self.parse_block_statement();
+
+            return Expression::If(Box::new(condition), consequence, alternative);
+        }
+
+        Expression::If(Box::new(condition), consequence, vec![Statement::Default])
+    }
+
     pub fn new(lexer: Lexer) -> Self {
         let mut parser = Parser {
             lexer,
@@ -122,6 +188,10 @@ impl Parser {
         parser.register_prefix_fn(TokenType::Int, Parser::parse_integer_literal);
         parser.register_prefix_fn(TokenType::Bang, Parser::parse_prefix_expression);
         parser.register_prefix_fn(TokenType::Minus, Parser::parse_prefix_expression);
+        parser.register_prefix_fn(TokenType::True, Parser::parse_boolean);
+        parser.register_prefix_fn(TokenType::False, Parser::parse_boolean);
+        parser.register_prefix_fn(TokenType::LParen, Parser::parse_grouping);
+        parser.register_prefix_fn(TokenType::If, Parser::parse_if);
 
         parser.register_infix_fn(TokenType::Plus, Parser::parse_infix_expression);
         parser.register_infix_fn(TokenType::Minus, Parser::parse_infix_expression);
@@ -285,16 +355,19 @@ mod parser_test {
     use crate::lexer::*;
     use crate::parser::*;
 
+    fn program(input: &str) -> Program {
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        parser.parse_program()
+    }
+
     #[test]
     fn test_def_statement() {
         let input = "
 def a = 3;
 def y = 10;
 def x = 12;";
-
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program();
+        let program = program(input);
 
         let expected_program = vec![
             Statement::Def(
@@ -457,8 +530,84 @@ return 12;";
         assert_eq!(program, expected_program);
     }
 
+    // #[test]
+    // fn test_literal_expression() {
+    //     todo!()
+    // }
+
     #[test]
     fn test_operator_precedence() {
-        todo!()
+        let input = "
+(5 + 5) * 4;";
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+
+        let expected_program = vec![Statement::Expression(Expression::Infix(
+            Box::new(Expression::Infix(
+                Box::new(Expression::Literal(Literal::Int(5))),
+                Operator::Plus,
+                Box::new(Expression::Literal(Literal::Int(5))),
+            )),
+            Operator::Star,
+            Box::new(Expression::Literal(Literal::Int(4))),
+        ))];
+
+        assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    fn test_boolean() {
+        let input = "
+false
+true";
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+
+        let expected_program = vec![
+            Statement::Expression(Expression::Literal(Literal::Bool(false))),
+            Statement::Expression(Expression::Literal(Literal::Bool(true))),
+        ];
+
+        assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    fn test_if() {
+        let input = "
+if (x > y) { x } else { y }";
+
+        let program = program(input);
+
+        let expected_program = vec![Statement::Expression(Expression::If(
+            Box::new(Expression::Infix(
+                Box::new(Expression::Ident(Identifier {
+                    name: "x".to_string(),
+                })),
+                Operator::Greater,
+                Box::new(Expression::Ident(Identifier {
+                    name: "y".to_string(),
+                })),
+            )),
+            vec![Statement::Expression(Expression::Ident(Identifier {
+                name: "x".to_string(),
+            }))],
+            vec![Statement::Expression(Expression::Ident(Identifier {
+                name: "y".to_string(),
+            }))],
+        ))];
+
+        assert_eq!(program, expected_program);
     }
 }
+
+/*
+def a = 3;
+def sum = fn(a, b) {
+    return a + b;
+};
+
+
+
+*/
