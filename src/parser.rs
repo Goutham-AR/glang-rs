@@ -18,7 +18,7 @@ enum Precedence {
     Call,
 }
 
-struct Parser {
+pub struct Parser {
     lexer: Lexer,
     curr_token: Token,
     peek_token: Token,
@@ -149,6 +149,80 @@ impl Parser {
         Expression::If(Box::new(condition), consequence, vec![Statement::Default])
     }
 
+    fn parse_function_literal(&mut self) -> Expression {
+        if !self.expect_peek(TokenType::LParen) {
+            panic!("Expected '(' for function parameters");
+        }
+
+        let params = self.parse_function_parameters();
+
+        if !self.expect_peek(TokenType::LBrace) {
+            panic!("Expected '{{' for function body");
+        }
+
+        let body = self.parse_block_statement();
+
+        return Expression::Function(params, body);
+    }
+
+    fn parse_function_parameters(&mut self) -> Vec<Identifier> {
+        let mut params = Vec::new();
+        if self.peek_token_is(TokenType::RParen) {
+            self.next_token();
+            return params;
+        }
+
+        self.next_token();
+
+        let mut ident = Identifier {
+            name: self.curr_token.literal.clone(),
+        };
+        params.push(ident);
+
+        while self.peek_token_is(TokenType::Comma) {
+            self.next_token();
+            self.next_token();
+            ident = Identifier {
+                name: self.curr_token.literal.clone(),
+            };
+            params.push(ident);
+        }
+
+        if !self.expect_peek(TokenType::RParen) {
+            panic!("expected ')' after function parameters");
+        }
+
+        return params;
+    }
+
+    fn parse_call_expression(&mut self, left: Expression) -> Expression {
+        let arguments = self.parse_call_arguments();
+        Expression::Call(Box::new(left), arguments)
+    }
+
+    fn parse_call_arguments(&mut self) -> Vec<Expression> {
+        let mut args = Vec::new();
+        if self.peek_token_is(TokenType::RParen) {
+            self.next_token();
+            return args;
+        }
+
+        self.next_token();
+        args.push(self.parse_expression(Precedence::Lowest));
+
+        while self.peek_token_is(TokenType::Comma) {
+            self.next_token();
+            self.next_token();
+            args.push(self.parse_expression(Precedence::Lowest));
+        }
+
+        if !self.expect_peek(TokenType::RParen) {
+            panic!("expected ')' in call expression");
+        }
+
+        return args;
+    }
+
     pub fn new(lexer: Lexer) -> Self {
         let mut parser = Parser {
             lexer,
@@ -183,6 +257,9 @@ impl Parser {
         parser
             .prec_table
             .insert(TokenType::Star, Precedence::Product);
+        parser
+            .prec_table
+            .insert(TokenType::LParen, Precedence::Call);
 
         parser.register_prefix_fn(TokenType::Identifier, Parser::parse_identifier);
         parser.register_prefix_fn(TokenType::Int, Parser::parse_integer_literal);
@@ -192,6 +269,7 @@ impl Parser {
         parser.register_prefix_fn(TokenType::False, Parser::parse_boolean);
         parser.register_prefix_fn(TokenType::LParen, Parser::parse_grouping);
         parser.register_prefix_fn(TokenType::If, Parser::parse_if);
+        parser.register_prefix_fn(TokenType::Function, Parser::parse_function_literal);
 
         parser.register_infix_fn(TokenType::Plus, Parser::parse_infix_expression);
         parser.register_infix_fn(TokenType::Minus, Parser::parse_infix_expression);
@@ -201,6 +279,7 @@ impl Parser {
         parser.register_infix_fn(TokenType::BangEqual, Parser::parse_infix_expression);
         parser.register_infix_fn(TokenType::Lt, Parser::parse_infix_expression);
         parser.register_infix_fn(TokenType::Gt, Parser::parse_infix_expression);
+        parser.register_infix_fn(TokenType::LParen, Parser::parse_call_expression);
 
         parser
     }
@@ -258,14 +337,13 @@ impl Parser {
             return Statement::Default;
         }
 
-        let expr = self.peek_token.literal.parse::<i64>().unwrap();
+        self.next_token();
 
-        let stmt = Statement::Def(
-            Identifier { name: ident_name },
-            Expression::Literal(Literal::Int(expr)),
-        );
+        let expr = self.parse_expression(Precedence::Lowest);
 
-        while !self.curr_token_is(TokenType::SemiColon) {
+        let stmt = Statement::Def(Identifier { name: ident_name }, expr);
+
+        if self.peek_token_is(TokenType::SemiColon) {
             self.next_token();
         }
 
@@ -273,11 +351,12 @@ impl Parser {
     }
 
     fn parse_return_statement(&mut self) -> Statement {
-        let expr: i64 = self.peek_token.literal.parse().unwrap();
+        self.next_token();
 
-        let stmt = Statement::Return(Expression::Literal(Literal::Int(expr)));
+        let expr = self.parse_expression(Precedence::Lowest);
+        let stmt = Statement::Return(expr);
 
-        while !self.curr_token_is(TokenType::SemiColon) {
+        if self.peek_token_is(TokenType::SemiColon) {
             self.next_token();
         }
 
@@ -365,7 +444,7 @@ mod parser_test {
     fn test_def_statement() {
         let input = "
 def a = 3;
-def y = 10;
+def y = a;
 def x = 12;";
         let program = program(input);
 
@@ -380,7 +459,9 @@ def x = 12;";
                 Identifier {
                     name: "y".to_string(),
                 },
-                Expression::Literal(Literal::Int(10)),
+                Expression::Ident(Identifier {
+                    name: "a".to_string(),
+                }),
             ),
             Statement::Def(
                 Identifier {
@@ -596,6 +677,63 @@ if (x > y) { x } else { y }";
             vec![Statement::Expression(Expression::Ident(Identifier {
                 name: "y".to_string(),
             }))],
+        ))];
+
+        assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    fn test_function_literal() {
+        let input = "
+fn(x, y) { x + y; };
+fn() { 2; };";
+
+        let program = program(input);
+
+        let expected_program = vec![
+            Statement::Expression(Expression::Function(
+                vec![
+                    Identifier {
+                        name: "x".to_string(),
+                    },
+                    Identifier {
+                        name: "y".to_string(),
+                    },
+                ],
+                vec![Statement::Expression(Expression::Infix(
+                    Box::new(Expression::Ident(Identifier {
+                        name: "x".to_string(),
+                    })),
+                    Operator::Plus,
+                    Box::new(Expression::Ident(Identifier {
+                        name: "y".to_string(),
+                    })),
+                ))],
+            )),
+            Statement::Expression(Expression::Function(
+                vec![],
+                vec![Statement::Expression(Expression::Literal(Literal::Int(2)))],
+            )),
+        ];
+
+        assert_eq!(program, expected_program);
+    }
+
+    #[test]
+    fn test_function_call() {
+        let input = "
+add(1, 3);";
+
+        let program = program(input);
+
+        let expected_program = vec![Statement::Expression(Expression::Call(
+            Box::new(Expression::Ident(Identifier {
+                name: "add".to_string(),
+            })),
+            vec![
+                Expression::Literal(Literal::Int(1)),
+                Expression::Literal(Literal::Int(3)),
+            ],
         ))];
 
         assert_eq!(program, expected_program);

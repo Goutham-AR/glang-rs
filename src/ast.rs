@@ -20,6 +20,8 @@ pub enum Expression {
     Prefix(Operator, Box<Expression>),
     Infix(Box<Expression>, Operator, Box<Expression>),
     If(Box<Expression>, ProgramBlock, ProgramBlock),
+    Function(Vec<Identifier>, ProgramBlock),
+    Call(Box<Expression>, Vec<Expression>),
 }
 
 #[derive(Debug, PartialEq)]

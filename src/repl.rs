@@ -2,6 +2,7 @@ use std::io;
 use std::io::prelude::*;
 
 use crate::lexer;
+use crate::parser;
 use crate::token::TokenType;
 
 const PROMPT: &str = ">>";
@@ -11,19 +12,17 @@ pub fn start() {
         print!("{}", PROMPT);
         for line_result in io::stdin().lock().lines() {
             let line = line_result.expect("Failed to read line");
-            let mut lexer = lexer::Lexer::new(&line);
-
-            for token in lexer {
-                println!("{:?}", token);
-            }
-
-            // loop {
-            //     let token = lexer.next_token();
+            let lexer = lexer::Lexer::new(&line);
+            let mut parser = parser::Parser::new(lexer);
+            // for token in lexer {
             //     println!("{:?}", token);
-            //     if token.token_type == TokenType::Eof {
-            //         break;
-            //     }
             // }
+
+            let program = parser.parse_program();
+
+            for stmt in program {
+                println!("{:?}", stmt);
+            }
         }
     }
 }
